@@ -3,6 +3,7 @@ import datetime
 import getpass
 import random
 
+
 class Item_Master:
 
     def __init__(self, **kwargs):
@@ -22,6 +23,8 @@ class Item_Master:
                     self.Ibrand = kwargs[param]
                 if param == "Istatus":
                     self.status = kwargs[param]
+                if param == "Iprice":
+                    self.Iprice = kwargs[param]
                 if param == "Icdt":
                     self.Icdt = kwargs[param]
                 if param == "Imdt":
@@ -87,6 +90,11 @@ class Item_Stock:
                 if param == "Imid":
                     self.mid = kwargs[param]
 
+class Validation_Error(Exception):
+
+        pass
+        #err = "Empty field passed..!!"
+
 
 class Item_Controller:
 
@@ -94,91 +102,100 @@ class Item_Controller:
         self._db = sqlite3.connect('CATALOG.DB')
         self._cur = self._db.cursor()
 
-
-    def Get_ItemMaster(self,item_no=''):
+    def Get_ItemMaster(self, filter_cond='',srch=None):
 
         itemlist = []
         item = dict()
         sql = 'SELECT * FROM ITEM_MASTER'
-        if not len(item_no):
-            item_no = '0'
-        sql += (f" WHERE Item_No = {item_no}")
+
+        sql += f" WHERE {filter_cond}"
         print(sql)
         self._cur.execute(sql)
         rows = self._cur.fetchall()
 
         for row in rows:
-            item = dict({'Ino':row[0], 'Iname':row[1],'Idesc':row[2], 'Iqty':row[3], 'Ibrand':row[4],
-                         'Istatus':row[5], 'Icdt':row[6],'Imdt':row[7], 'Icid':row[8],'Imid':row[9]})
-                         #'Iprice':None, 'Imoveqty':None})
+            item = dict({'Ino': row[0], 'Iname': row[1], 'Idesc': row[2], 'Iqty': row[3], 'Ibrand': row[4],
+                         'Istatus': row[5], 'Icdt': row[6], 'Imdt': row[7], 'Icid': row[8], 'Imid': row[9],
+                         'Iprice':None, 'Imoveqty':None})
             itemlist.append(item)
 
-        #Assign the diff prices & move-qty from other tables to this dict, so we get all data in one place
+        # Assign the diff prices & move-qty from other tables to this dict, so we get all data in one place
 
-        #item["Iprice"] = self.Get_ItemPrice(item_no)
-        #item["Imoveqty"] = self.Get_ItemStock(item_no)
+            item["Iprice"] = self.Get_ItemPrice(row[0])
+            item["Imoveqty"] = self.Get_ItemStock(row[0])
 
-        #print(item)
-        return item
+        # print(item)
+        return itemlist
 
-
-    def Get_ItemPrice(self,item_no=''):
+    def Get_ItemPrice(self, item_no=''):
 
         pricelist = []
         price = dict()
         sql = 'SELECT * FROM ITEM_PRICE'
-        if not len(item_no):
-            item_no = '0'
+        if int(item_no) < 0:
+            item_no = 0
         sql += (f" WHERE Item_No = {item_no}")
         print(sql)
         self._cur.execute(sql)
         rows = self._cur.fetchall()
 
         for row in rows:
-            price = dict({'Ino':row[0], 'Iseqno':row[1],'Ifdt':row[2], 'Itdt':row[3], 'Iprice':row[4],'Icdt':row[5],
-                           'Imdt':row[6], 'Icid':row[7],'Imid':row[8]})
+            price = dict(
+                {'Ino': row[0], 'Iseqno': row[1], 'Ifdt': row[2], 'Itdt': row[3], 'Iprice': row[4], 'Icdt': row[5],
+                 'Imdt': row[6], 'Icid': row[7], 'Imid': row[8]})
             pricelist.append(price)
 
         print(pricelist)
         return pricelist
 
-
-    def Get_ItemStock(self,item_no=''):
+    def Get_ItemStock(self, item_no=''):
 
         stocklist = []
 
         stock = dict()
         sql = 'SELECT * FROM ITEM_STOCK'
-        if not len(item_no):
-            item_no = '0'
+
+        if int(item_no) < 0:
+            item_no = 0
         sql += (f" WHERE Item_No = {item_no}")
+
         print(sql)
         self._cur.execute(sql)
         rows = self._cur.fetchall()
 
         for row in rows:
             stock = dict(
-                {'Ino': row[0], 'Istockid': row[1], 'Imovedt': row[2], 'Imovety': row[3], 'Imoveqty': row[4], 'Icdt': row[5],
+                {'Ino': row[0], 'Istockid': row[1], 'Imovedt': row[2], 'Imovety': row[3], 'Imoveqty': row[4],
+                 'Icdt': row[5],
                  'Imdt': row[6], 'Icid': row[7], 'Imid': row[8]})
             stocklist.append(stock)
 
         return stocklist
 
-# ----------- SAVE ITEM MAIN CALL ---------------------#
+    # ----------- SAVE ITEM MAIN CALL ---------------------#
 
-    def Save_ItemMaster(self,item):
+    def Save_ItemMaster(self, item):
 
+        if not len(item.Ino):
+            item.Ino = 0
 
-        existingitem = self.Get_ItemMaster(item.Ino)
+        filter_cond = f"Item_No = {item.Ino}"
+
+        existingitem = self.Get_ItemMaster(filter_cond)
 
         print(existingitem)
 
         if not existingitem:
-            self.dbitem = self.__InsertItem(item)
-            print("Insert happened")
+
+            self.Item_Exception_Check(item)
+            if not Validation_Error or self.Item_Check == True:
+                self.dbitem1 = self.__InsertItem(item)
+                if True:
+                    print("ITEM_MASTER Insert happened")
+                    self.dbitem4 = self.Price_Stock_Entry(item)
         else:
             self.dbitem = self.__UpdateItem(item)
-            print("Update happened")
+            print("ITEM_MASTER Update happened")
 
         return item
 
@@ -189,17 +206,17 @@ class Item_Controller:
         if existingitem == []:
             self.seqno = 1
             self.dbitem = self.__InsertItemPrice(item)
-            print("Insert happened")
+            print("ITEM_PRICE Insert happened")
         else:
-            #In Item2 if seqno is not passed, then we will
-            if item.Iseqno == '': #need to handle for seqno which is given by user but not in table
+            # In Item2 if seqno is not passed, then we will
+            if item.Iseqno == '':  # need to handle for seqno which is given by user but not in table
                 self.seqno = existingitem[-1]['Iseqno'] + 1
                 self.dbitem = self.__InsertItemPrice(item)
-                print("Insert happened")
+                print("ITEM_PRICE Insert happened")
             else:
                 self.seqno = item.Iseqno
                 self.dbitem = self.__UpdateItemPrice(item)
-                print("Update happened")
+                print("ITEM_PRICE Update happened")
 
         return item
 
@@ -207,29 +224,31 @@ class Item_Controller:
 
         existingitem = self.Get_ItemStock(item.Ino)
 
-        print('existing: ',existingitem)
+        print('existing: ', existingitem)
 
         if item.Imty == 'OUT':
             item.Imqty = -item.Imqty
 
+        # exist chk in stock
+
         if existingitem == []:
             self.stockid = 1
             self.dbitem = self.__InsertItemStock(item)
-            print("Insert happened")
+            print("ITEM_STOCK Insert1 happened")
         else:
-            #In Item3 if stockid is not passed, then we will add +1 to the last stockid and insert it.
+            # In Item3 if stockid is not passed, then we will add +1 to the last stockid and insert it.
             if item.Istockid == '':
                 self.stockid = existingitem[-1]['Istockid'] + 1
                 self.dbitem = self.__InsertItemStock(item)
-                print("Insert happened")
+                print("ITEM_STOCK Insert2 happened")
             else:
                 self.stockid = item.Istockid
                 self.dbitem = self.__UpdateItemStock(item)
-                print("Update happened")
+                print("ITEM_STOCK Update happened")
 
         return item
 
-# ----------- I N S E R T ---------------------#
+    # ----------- I N S E R T ---------------------#
 
     def __InsertItem(self, item):
 
@@ -237,6 +256,8 @@ class Item_Controller:
 
         if self.it.Ino == '':
             self.item_no = self.Generate_Item_No(item)
+        else:
+            self.item_no = self.it.Ino
 
         Cre_dt = self.Get_Curr_date()
 
@@ -257,11 +278,10 @@ class Item_Controller:
         try:
             self._cur.execute(sql)
             self._db.commit()
+            return True
         except sqlite3.Error as err:
             self.it.RecStatus = err
-        finally:
-            self.it.RecStatus = "Created"
-        return self.it
+
 
     def __InsertItemPrice(self, item):
 
@@ -271,21 +291,22 @@ class Item_Controller:
 
         Cre_id = self.Get_Username()
 
+        print(self.it.Itdt)
+
         sql = (
             f"INSERT INTO ITEM_PRICE (Item_No, Item_Seqno, Item_FromDt, Item_ToDt, Item_Price, "
             f"Item_CreatedDt, Item_ModifiedDt, Item_CreatedId, Item_ModifiedId ) "
-            f"VALUES ('{self.it.Ino}', '{self.seqno}', '{self.it.Ifdt}', {self.it.Itdt}, '{self.it.Iprice}', "
+            f"VALUES ('{self.it.Ino}', '{self.seqno}', '{self.it.Ifdt}', '{self.it.Itdt}', '{self.it.Iprice}', "
             f"'{Cre_dt}', '{Cre_dt}', '{Cre_id}', '{Cre_id}')")
 
         print(sql)
         try:
             self._cur.execute(sql)
             self._db.commit()
+            return True
         except sqlite3.Error as err:
             self.it.RecStatus = err
-        finally:
-            self.it.RecStatus = "Created"
-        return self.it
+
 
     def __InsertItemStock(self, item):
 
@@ -305,13 +326,14 @@ class Item_Controller:
         try:
             self._cur.execute(sql)
             self._db.commit()
+            if self.stockid != 1:
+                print(self.stockid)
+                self.Master_Qty_Updt(item)
+            return True
         except sqlite3.Error as err:
             self.it.RecStatus = err
-        finally:
-            self.it.RecStatus = "Created"
-        return self.it
 
-#----------- U P D A T E ---------------------#
+    # ----------- U P D A T E ---------------------#
 
     def __UpdateItem(self, item):
         self.it = item
@@ -320,27 +342,24 @@ class Item_Controller:
 
         Mod_id = self.Get_Username()
 
-
         if self.it.Iqty <= 0:
             status = 'Not Avail'
         else:
             status = 'Avail'
 
-
         sql = (
             f"UPDATE ITEM_MASTER SET Item_Name = '{self.it.Iname}', Item_Desc = '{self.it.Idesc}', "
-            f"Item_Qty = {self.it.Iqty}, Item_Brand = '{self.it.Ibrand}', Item_Status = '{status}', "
+            f"Item_Brand = '{self.it.Ibrand}', Item_Status = '{status}', "
             f"Item_ModifiedDt = '{Mod_dt}', Item_ModifiedId = '{Mod_id}' WHERE Item_No = {self.it.Ino}")
         print(sql)
 
         try:
             self._cur.execute(sql)
             self._db.commit()
+            return True
         except sqlite3.Error as err:
             self.it.Recstatus = err
-        finally:
-            self.it.RecStatus = "Updated"
-        return self.it
+
 
     def __UpdateItemPrice(self, item):
         self.it = item
@@ -348,7 +367,6 @@ class Item_Controller:
         Mod_dt = self.Get_Curr_date()
 
         Mod_id = self.Get_Username()
-
 
         sql = (
             f"UPDATE ITEM_PRICE SET Item_FromDt = '{self.it.Ifdt}', Item_ToDt = '{self.it.Itdt}', "
@@ -359,11 +377,9 @@ class Item_Controller:
         try:
             self._cur.execute(sql)
             self._db.commit()
+            return True
         except sqlite3.Error as err:
             self.it.Recstatus = err
-        finally:
-            self.it.RecStatus = "Updated"
-        return self.it
 
     def __UpdateItemStock(self, item):
         self.it = item
@@ -371,7 +387,6 @@ class Item_Controller:
         Mod_dt = self.Get_Curr_date()
 
         Mod_id = self.Get_Username()
-
 
         sql = (
             f"UPDATE ITEM_STOCK SET Item_MoveDt = '{self.it.Imdt}', Item_MoveTy = '{self.it.Imty}', "
@@ -382,18 +397,53 @@ class Item_Controller:
         try:
             self._cur.execute(sql)
             self._db.commit()
+            return True
         except sqlite3.Error as err:
             self.it.Recstatus = err
-        finally:
-            self.it.RecStatus = "Updated"
-        return self.it
 
+    #######----------- UPDATE MASTER FOR QTY UPDT IN STOCK ------------------########
 
-    def Generate_Item_No(self,item):
+    def Master_Qty_Updt(self, item):
+
+        filter_cond = f"Item_No = {item.Ino}"
+
+        existingitem = self.Get_ItemMaster(filter_cond)
+
+        if not existingitem:
+            print("Stock entry is not avail in Item Master table")
+        else:
+            existingitem['Iqty'] = existingitem['Iqty'] + item.Imqty
+
+        item1 = Item_Master(Ino=item.Ino, Iname=existingitem['Iname'], Idesc=existingitem['Idesc'],
+                            Iqty=existingitem['Iqty'], Ibrand=existingitem['Ibrand'])
+
+        self.__UpdateItem(item1)
+        print("Master_Qty_Updated")
+
+    #######----------- INSERT IN PRICE & STOCK WHEN AN ENTRY HAPPENS IN ITEM MASTER -------########
+
+    def Price_Stock_Entry(self, item):
+
+        curr_dt = datetime.date.today()
+
+        curr_dt_1 = datetime.date.today() + datetime.timedelta(days=1)
+
+        item2 = Item_Price(Ino=item.Ino, Ifdt=curr_dt, Itdt=curr_dt_1, Iprice=item.Iprice)
+        item3 = Item_Stock(Ino=item.Ino, Imdt=curr_dt, Imty='IN', Imqty=item.Iqty)
+
+        self.dbitem2 = self.Save_ItemPrice(item2)
+        self.dbitem3 = self.Save_ItemStock(item3)
+
+        print("Price_Stock_Inserted")
+
+        return item
+    #######----------- GENERATE ITEM_NO, CURR_DT, USERNAME, EXCEPTION ------------------########
+
+    def Generate_Item_No(self, item):
 
         self.item_id1 = item.Iname[0]
         self.item_id2 = item.Ibrand[0]
-        self.item_id3 = "%06d" % random.randint(1,100000)
+        self.item_id3 = "%06d" % random.randint(1, 100000)
 
         item_no = self.item_id1 + self.item_id2 + str(self.item_id3)
 
@@ -407,43 +457,52 @@ class Item_Controller:
         self.user_name = getpass.getuser()
         return self.user_name
 
+    def Item_Exception_Check(self,item):
+
+        try:
+            self.Item_Check = False
+
+
+            if item.Iname == '':
+                raise Validation_Error('Empty Item Name passed')
+            elif item.Idesc == '':
+                raise Validation_Error('Empty Item Desc passed')
+            elif item.Ibrand == '':
+                raise Validation_Error('Empty Item Brand passed')
+            elif item.Iprice == '':
+                raise Validation_Error('Empty Item Price passed')
+            elif item.Iqty == '':
+                raise Validation_Error('Empty Item Quantity passed')
+            else:
+                self.Item_Check = True
+
+        except Validation_Error as e:
+            print(e)
+
 
 #################################################################################
 
 
 i = Item_Controller()
-item1 = Item_Master(Ino='1', Iname='Pencil Sharpner', Idesc='Pencil only', Iqty=50, Ibrand='Nataraj')
-item2 = Item_Price(Ino='2', Iseqno = '3', Ifdt='2019-07-05', Itdt='2019-07-15', Iprice=5)
-item3 = Item_Stock(Ino='2', Istockid = '', Imdt='2019-07-06', Imty='IN', Imqty=10)
+item1 = Item_Master(Ino='19', Iname='', Idesc='Glasss', Iqty='', Ibrand='Nataraj',Iprice=5)
+item2 = Item_Price(Ino='2', Iseqno='3', Ifdt='2019-07-05', Itdt='2019-07-15', Iprice=5)
+item3 = Item_Stock(Ino='1', Istockid='', Imdt='2019-07-21', Imty='OUT', Imqty=10)
 
-i.Save_ItemStock(item3)
+if __name__ == '__main__':
+    i.Save_ItemMaster(item1)
 
-
-
-#Post stock - insert each entry / for each entry update master table
-
-'''
-1. validation - 
-empty for name, desc
-
-it shd be in master table
-
-In stock, insert only shd be done.
-
-
-modify the SaveItem method to accept all 3 (item_no, price, stock) to do below insert
-price & stock insert shd be done after a insert is done in master
-
-qty shd not be updt in master table
-
-
-return true for all save
-
-2. srch criteira:
-Get method for master table shd be modified to accept different filter condi, chng whr to dynamic
-
-Add like for item
 
 '''
 
 
+if 2 or more items entered for srch criteria , then handle it.
+
+    --> 
+
+
+add price & stock to master dic and display
+
+do.co - cloud > to create mysql 
+
+
+'''
